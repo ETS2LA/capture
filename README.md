@@ -63,11 +63,10 @@ import cv2
 
 reader = FrameReader()
 while True:
-    frame = reader.get_frame(timeout_ms=1000)
+    frame = reader.get_frame()
     if frame is not None:
         cv2.imshow("ets2la capture", frame)
-        if cv2.waitKey(1) == 27:
-            break
+        cv2.waitKey(1)
 ```
 
 ### C++
@@ -77,7 +76,7 @@ while True:
 
 ets2la::FrameReader reader;
 ets2la::Frame frame;
-if (reader.get_frame(frame, 1000)) {
+if (reader.get_frame(frame)) {
     cv::Mat img(frame.height, frame.width, CV_8UC4, frame.data.data());
 }
 ```

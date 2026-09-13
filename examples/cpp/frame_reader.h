@@ -20,7 +20,7 @@ class FrameReader {
 public:
     FrameReader() {
         hMapping_ = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, SHM_NAME);
-        if (!hMapping_) { lastError_ = "OpenFileMappingW failed - is ets2la_capture.dll loaded?"; return; }
+        if (!hMapping_) { lastError_ = "OpenFileMappingW failed, is ets2la_capture.dll loaded?"; return; }
 
         hEvent_ = OpenEventW(EVENT_MODIFY_STATE | SYNCHRONIZE, FALSE, EVENT_NAME);
         if (!hEvent_) { lastError_ = "OpenEventW failed"; return; }

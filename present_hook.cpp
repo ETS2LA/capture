@@ -1,9 +1,9 @@
 #include "present_hook.h"
 #include "shared_memory.h"
+#include "scs_logging.h"
 #include <MinHook.h>
 #include <d3d11.h>
 #include <dxgi.h>
-#include <cstdio>
 #include <atomic>
 
 #pragma comment(lib, "d3d11.lib")
@@ -26,27 +26,10 @@ static UINT g_lastWidth = 0, g_lastHeight = 0;
 
 static std::atomic<bool> g_hookInstalled{false};
 
-static void Log(const char* msg) {
-    OutputDebugStringA("[ets2la_capture] ");
-    OutputDebugStringA(msg);
-    OutputDebugStringA("\n");
-}
-
-static void LogThrottled(const char* msg, int everyN = 300) {
+static void LogThrottled(const char* msg, int everyN = 600) {
     static int counter = 0;
-    if ((counter++ % everyN) == 0) Log(msg);
-}
-
-static void trackReadback(bool skipped) {
-    static int skipCount = 0, total = 0;
-    total++;
-    if (skipped) skipCount++;
-    if (total >= 120) {
-        char buf[128];
-        sprintf_s(buf, "[ets2la_capture] skipped %d/%d readbacks (GPU not ready in time)", skipCount, total);
-        Log(buf);
-        skipCount = 0;
-        total = 0;
+    if ((counter++ % everyN) == 0) {
+        scs_logging::write(SCS_LOG_TYPE_warning, msg);
     }
 }
 
@@ -96,13 +79,15 @@ static HRESULT WINAPI hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, U
             backBuffer->GetDesc(&desc);
 
             if (desc.Width > MAX_WIDTH || desc.Height > MAX_HEIGHT) {
-                LogThrottled("game resolution exceeds MAX_WIDTH/MAX_HEIGHT - raise these in shared_frame.h and rebuild");
+                LogThrottled("game resolution exceeds MAX_WIDTH/MAX_HEIGHT, raise these in shared_frame.h and rebuild");
             } else {
                 EnterCriticalSection(&g_stateLock);
 
                 if (!g_writerReady) {
                     g_writerReady = g_writer.init();
-                    if (!g_writerReady) Log("shared memory init failed");
+                    if (!g_writerReady) {
+                        scs_logging::write(SCS_LOG_TYPE_error, "shared memory init failed");
+                    }
                 }
 
                 if (g_writerReady && EnsureStagingTextures(device, desc.Width, desc.Height, desc.Format)) {
@@ -120,13 +105,11 @@ static HRESULT WINAPI hkPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, U
                         if (hr == S_OK) {
                             g_writer.publish((const uint8_t*)mapped.pData, desc.Width, desc.Height, mapped.RowPitch);
                             ctx->Unmap(g_staging[idx], 0);
-                            trackReadback(false);
                             published = true;
                         } else if (hr != DXGI_ERROR_WAS_STILL_DRAWING) {
                             break;
                         }
                     }
-                    if (!published) trackReadback(true);
 
                     ctx->CopyResource(g_staging[g_stagingWriteIdx], backBuffer);
                     g_stagingValid[g_stagingWriteIdx] = true;
@@ -190,7 +173,7 @@ static void* GetPresentAddressViaDummyDevice() {
             void** vtable = *reinterpret_cast<void***>(swapChain);
             presentAddr = vtable[8];
         } else {
-            Log("dummy D3D11CreateDeviceAndSwapChain failed, retrying");
+            scs_logging::write(SCS_LOG_TYPE_warning, "dummy D3D11CreateDeviceAndSwapChain failed, retrying");
         }
 
         if (swapChain) swapChain->Release();
@@ -215,27 +198,27 @@ bool StartPresentHook() {
 
     void* presentAddr = GetPresentAddressViaDummyDevice();
     if (!presentAddr) {
-        Log("could not obtain Present address - giving up");
+        scs_logging::write(SCS_LOG_TYPE_error, "could not obtain Present address, giving up");
         g_hookInstalled = false;
         return false;
     }
 
     if (MH_Initialize() != MH_OK) {
-        Log("MH_Initialize failed");
+        scs_logging::write(SCS_LOG_TYPE_error, "MH_Initialize failed");
         g_hookInstalled = false;
         return false;
     }
     if (MH_CreateHook(presentAddr, reinterpret_cast<void*>(&hkPresent), reinterpret_cast<void**>(&oPresent)) != MH_OK) {
-        Log("MH_CreateHook failed");
+        scs_logging::write(SCS_LOG_TYPE_error, "MH_CreateHook failed");
         g_hookInstalled = false;
         return false;
     }
     if (MH_EnableHook(presentAddr) != MH_OK) {
-        Log("MH_EnableHook failed");
+        scs_logging::write(SCS_LOG_TYPE_error, "MH_EnableHook failed");
         g_hookInstalled = false;
         return false;
     }
-    Log("Present hook installed");
+    scs_logging::write(SCS_LOG_TYPE_message, "Present hook installed");
     return true;
 }
 

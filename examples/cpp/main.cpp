@@ -17,7 +17,7 @@ int main() {
     ets2la::Frame frame;
     for (;;) {
         if (!reader.get_frame(frame)) {
-            println("No frame within timeout - is the game running?");
+            println("No frame within timeout, is the game running?");
             continue;
         }
 

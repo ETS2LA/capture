@@ -13,7 +13,7 @@ HEADER_FMT = "<IIII QQ I"
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 FRAME_MAGIC = 0x45545332
 
-MAX_WIDTH, MAX_HEIGHT = 3840, 2160
+MAX_WIDTH, MAX_HEIGHT = 7680, 2160
 MAX_FRAME_BYTES = MAX_WIDTH * MAX_HEIGHT * 4
 SHM_TOTAL_SIZE = HEADER_SIZE + MAX_FRAME_BYTES
 
@@ -53,7 +53,7 @@ class FrameReader:
         self._map_handle = kernel32.OpenFileMappingW(FILE_MAP_ALL_ACCESS, False, SHM_NAME)
         if not self._map_handle:
             raise OSError(_last_error(
-                "Could not open shared memory - is ets2la_capture.dll loaded?"
+                "Could not open shared memory, is ets2la_capture.dll loaded?"
             ))
         self._event_handle = kernel32.OpenEventW(EVENT_ALL_ACCESS, False, EVENT_NAME)
         if not self._event_handle:
@@ -69,8 +69,6 @@ class FrameReader:
         self._view_addr = addr
         self._buf = (ctypes.c_ubyte * SHM_TOTAL_SIZE).from_address(addr)
         self._last_frame_index = 0
-        self._fps_window_start = time.perf_counter()
-        self._fps_window_count = 0
 
     def _read_locked(self):
         raw_header = bytes(self._buf[:HEADER_SIZE])

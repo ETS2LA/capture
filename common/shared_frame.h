@@ -19,7 +19,7 @@ struct FrameHeader {
 
 constexpr uint32_t FRAME_MAGIC = 0x45545332;
 
-constexpr uint32_t MAX_WIDTH  = 3840;
+constexpr uint32_t MAX_WIDTH  = 7680;
 constexpr uint32_t MAX_HEIGHT = 2160;
 constexpr size_t   MAX_FRAME_BYTES = size_t(MAX_WIDTH) * MAX_HEIGHT * 4;
 constexpr size_t   SHM_TOTAL_SIZE  = sizeof(FrameHeader) + MAX_FRAME_BYTES;

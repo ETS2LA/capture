@@ -1,7 +1,7 @@
 #pragma once
 #include <windows.h>
-#include <cstdio>
 #include "common/shared_frame.h"
+#include "scs_logging.h"
 
 class SharedFrameWriter {
 public:
@@ -67,8 +67,6 @@ public:
 
         ReleaseMutex(hMutex_);
         SetEvent(hEvent_);
-
-        trackRate();
     }
 
     ~SharedFrameWriter() {
@@ -79,27 +77,6 @@ public:
     }
 
 private:
-    void trackRate() {
-        static LARGE_INTEGER freq = [] { LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
-        static LARGE_INTEGER windowStart{};
-        static int windowCount = 0;
-
-        LARGE_INTEGER now;
-        QueryPerformanceCounter(&now);
-        if (windowStart.QuadPart == 0) windowStart = now;
-        windowCount++;
-
-        if (windowCount >= 120) {
-            double seconds = double(now.QuadPart - windowStart.QuadPart) / freq.QuadPart;
-            double fps = seconds > 0.0 ? windowCount / seconds : 0.0;
-            char buf[128];
-            sprintf_s(buf, "[ets2la_capture] publish rate: %.1f fps\n", fps);
-            OutputDebugStringA(buf);
-            windowStart = now;
-            windowCount = 0;
-        }
-    }
-
     HANDLE hMapping_ = nullptr;
     HANDLE hEvent_ = nullptr;
     HANDLE hMutex_ = nullptr;
