@@ -19,6 +19,20 @@ struct Frame {
 class FrameReader {
 public:
     FrameReader() {
+        init();
+    }
+
+    ~FrameReader() {
+        if (view_) UnmapViewOfFile(view_);
+        if (hMapping_) CloseHandle(hMapping_);
+        if (hEvent_) CloseHandle(hEvent_);
+        if (hMutex_) CloseHandle(hMutex_);
+    }
+
+    FrameReader(const FrameReader&) = delete;
+    FrameReader& operator=(const FrameReader&) = delete;
+
+    void init() {
         hMapping_ = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, SHM_NAME);
         if (!hMapping_) { lastError_ = "OpenFileMappingW failed, is ets2la_capture.dll loaded?"; return; }
 
@@ -35,16 +49,6 @@ public:
         pixels_ = reinterpret_cast<const uint8_t*>(view_) + sizeof(FrameHeader);
         ok_ = true;
     }
-
-    ~FrameReader() {
-        if (view_) UnmapViewOfFile(view_);
-        if (hMapping_) CloseHandle(hMapping_);
-        if (hEvent_) CloseHandle(hEvent_);
-        if (hMutex_) CloseHandle(hMutex_);
-    }
-
-    FrameReader(const FrameReader&) = delete;
-    FrameReader& operator=(const FrameReader&) = delete;
 
     bool ok() const { return ok_; }
     const std::string& last_error() const { return lastError_; }

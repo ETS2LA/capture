@@ -6,14 +6,14 @@
 using namespace std;
 
 int main() {
-    ets2la::FrameReader reader;
+    ets2la_capture::FrameReader reader;
     if (!reader.ok()) {
         printf("Failed to open capture: %s\n", reader.last_error().c_str());
         println("Is the game running with ets2la_capture.dll loaded?");
         return 1;
     }
 
-    ets2la::Frame frame;
+    ets2la_capture::Frame frame;
     for (;;) {
         if (!reader.get_frame(frame)) {
             println("No frame within timeout, is the game running?");
