@@ -12,9 +12,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(minhook)
 
-add_library(capture SHARED
+add_library(ets2la_capture SHARED
     src/dll/dllmain.cpp
     src/dll/present_hook.cpp
 )
-target_link_libraries(capture PRIVATE minhook d3d11 dxgi)
-set_target_properties(capture PROPERTIES OUTPUT_NAME "ets2la_capture")
+target_link_libraries(ets2la_capture PRIVATE minhook d3d11 dxgi)
+set_target_properties(ets2la_capture PROPERTIES OUTPUT_NAME "ets2la_capture")

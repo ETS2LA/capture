@@ -6,7 +6,7 @@
 #include <string>
 #include "shared_frame.h"
 
-namespace ets2la {
+namespace ets2la_capture {
 
 struct Frame {
     uint32_t width = 0;

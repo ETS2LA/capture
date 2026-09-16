@@ -1,4 +1,4 @@
-# capture
+# ets2la_capture
 
 Zero-copy, in-process frame capture for Euro Truck Simulator 2 / American
 Truck Simulator. Hooks the game's own DirectX 11 `Present` call and copies
@@ -58,7 +58,7 @@ Both are safe to call from multiple readers/processes at once.
 
 ### Python
 ```python
-from frame_reader import FrameReader
+from ets2la_capture import FrameReader
 import cv2
 
 reader = FrameReader()
@@ -71,11 +71,11 @@ while True:
 
 ### C++
 ```cpp
-#include "frame_reader.h"
+#include "ets2la_capture/frame_reader.h"
 #include <opencv2/opencv.hpp>
 
-ets2la::FrameReader reader;
-ets2la::Frame frame;
+ets2la_capture::FrameReader reader;
+ets2la_capture::Frame frame;
 if (reader.get_frame(frame)) {
     cv::Mat img(frame.height, frame.width, CV_8UC4, frame.data.data());
 }
