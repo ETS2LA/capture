@@ -4,7 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <string>
-#include "../../common/shared_frame.h"
+#include "shared_frame.h"
 
 namespace ets2la {
 

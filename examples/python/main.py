@@ -1,4 +1,4 @@
-from frame_reader import FrameReader
+from ets2la_capture import FrameReader
 import cv2
 
 reader = FrameReader()

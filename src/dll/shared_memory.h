@@ -1,6 +1,7 @@
 #pragma once
+
 #include <windows.h>
-#include "common/shared_frame.h"
+#include "../../include/ets2la_capture/shared_frame.h"
 #include "scs_logging.h"
 
 class SharedFrameWriter {

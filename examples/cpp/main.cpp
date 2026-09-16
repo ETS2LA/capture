@@ -1,5 +1,4 @@
-
-#include "frame_reader.h"
+#include "../../include/ets2la_capture/frame_reader.h"
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <print>

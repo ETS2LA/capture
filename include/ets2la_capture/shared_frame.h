@@ -1,4 +1,5 @@
 #pragma once
+
 #include <cstdint>
 
 #define SHM_NAME   L"Local\\ETS2LA_FrameShare"
