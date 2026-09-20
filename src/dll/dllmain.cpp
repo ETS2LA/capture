@@ -66,7 +66,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID) {
             DisableThreadLibraryCalls(hModule);
             break;
         case DLL_PROCESS_DETACH:
-            StopPresentHook();
+            StopPresentHook(true);
             scs_logging::shutdown();
             break;
     }

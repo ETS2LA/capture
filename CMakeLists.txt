@@ -16,5 +16,7 @@ add_library(ets2la_capture SHARED
     src/dll/dllmain.cpp
     src/dll/present_hook.cpp
 )
+
+target_include_directories(ets2la_capture PRIVATE include)
 target_link_libraries(ets2la_capture PRIVATE minhook d3d11 dxgi)
 set_target_properties(ets2la_capture PROPERTIES OUTPUT_NAME "ets2la_capture")

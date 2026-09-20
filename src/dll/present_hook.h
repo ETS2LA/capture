@@ -4,4 +4,4 @@
 #include <dxgi.h>
 
 bool StartPresentHook();
-void StopPresentHook();
+void StopPresentHook(bool process_detach = false);

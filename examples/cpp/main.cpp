@@ -1,27 +1,26 @@
-#include "../../include/ets2la_capture/frame_reader.h"
+#include "ets2la_capture/frame_reader.h"
 #include <opencv2/opencv.hpp>
-#include <iostream>
-#include <print>
+#include <cstdio>
 
-using namespace std;
 
 int main() {
     ets2la_capture::FrameReader reader;
-    if (!reader.ok()) {
-        printf("Failed to open capture: %s\n", reader.last_error().c_str());
-        println("Is the game running with ets2la_capture.dll loaded?");
-        return 1;
-    }
-
     ets2la_capture::Frame frame;
-    for (;;) {
+
+    while (true) {
         if (!reader.get_frame(frame)) {
-            println("No frame within timeout, is the game running?");
             continue;
         }
 
-        cv::Mat img(frame.height, frame.width, CV_8UC4, frame.data.data());
-        cv::imshow("ets2la capture", img);
+        cv::Mat native(int(frame.height), int(frame.width), CV_8UC4, frame.data.data(), frame.stride);
+        cv::Mat bgr;
+        if (frame.layout() == ets2la_capture::PixelLayout::RGBA8) {
+            cv::cvtColor(native, bgr, cv::COLOR_RGBA2BGR);
+        } else {
+            cv::cvtColor(native, bgr, cv::COLOR_BGRA2BGR);
+        }
+
+        cv::imshow("ets2la_capture", bgr);
         cv::waitKey(1);
     }
     return 0;
