@@ -12,7 +12,7 @@ constexpr uint32_t kDataMagic = 0x32445445;     // "ETD2"
 
 constexpr uint32_t kSlotCount = 6;              // frames kept in the ring
 constexpr uint32_t kMaxReaders = 32;            // heartbeat table size
-constexpr uint32_t kReaderTimeoutMs = 2000;     // reader considered gone after this
+constexpr uint32_t kReaderTimeoutMs = 10000;    // reader considered gone after this
 
 constexpr uint64_t kControlBytes = 4096;
 constexpr uint64_t kDataHeaderBytes = 4096;

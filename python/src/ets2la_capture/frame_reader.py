@@ -16,12 +16,12 @@ EVENT_NAMES = ("Local\\ETS2LA_Capture_Frame0", "Local\\ETS2LA_Capture_Frame1")
 CONTROL_BYTES = 4096
 SLOT_HEADER_BYTES = 256
 MAX_READERS = 32
-READER_TIMEOUT_MS = 2000
+READER_TIMEOUT_MS = 10000
 
 CTL_MAGIC = 0
 CTL_SLOT_COUNT = 4
-CTL_QPC_FREQ = 12
-CTL_WRITER_PID = 20
+CTL_QPC_FREQ = 16
+CTL_WRITER_PID = 24
 CTL_GENERATION = 64
 CTL_CAPTURING = 68
 CTL_LATEST = 72
@@ -32,7 +32,7 @@ CTL_READERS = 128
 READER_STRIDE = 64
 
 # DataHeader: magic, generation, slot_count, slot_stride, slots_offset, width, height, stride, format, bytes_per_pixel, pad, total_size
-DATA_HEADER_FMT = "<IIIQQIIIIIIQ"
+DATA_HEADER_FMT = "<III4xQQIIIIIIQ"
 
 # SlotHeader: seq, frame_index, timestamp_qpc, publish_qpc
 SLOT_FMT = "<QQQQ"
@@ -114,22 +114,12 @@ class _DataMapping:
 
 
 class Frame:
-    """One captured frame.
+    """One captured frame."""
 
-    pixels        numpy array in the game's native format:
-                    BGRA8/BGRX8/RGBA8 -> (H, W, 4) uint8
-                    RGB10A2           -> (H, W)    uint32 (packed)
-                    RGBA16F           -> (H, W, 4) float16
-    layout        'BGRA8', 'RGBA8', ... (see `format` for the raw DXGI_FORMAT)
-    frame_index   strictly increasing; gaps mean frames you skipped
-    """
-
-    __slots__ = ("pixels", "width", "height", "format", "layout", "frame_index",
-                 "timestamp_qpc", "publish_qpc", "_check", "_reader")
+    __slots__ = ("pixels", "width", "height", "format", "layout", "frame_index", "timestamp_qpc", "publish_qpc", "_check", "_reader")
 
     def is_valid(self) -> bool:
-        """Always True for copies. For copy=False frames: False if the writer
-        overwrote the frame while you were reading it (discard the result)."""
+        """Always True for copies. For copy=False frames: False if the writer overwrote the frame while you were reading it (discard the result)."""
         return True if self._check is None else self._check()
 
     def age_ms(self) -> float:
@@ -164,10 +154,12 @@ class Frame:
 
 
 class FrameReader:
-    """Lock-free reader. See module docstring.
+    """Lock-free reader.
 
     wait_for_capture=False (default): raise OSError if the capture DLL is not
-    running. wait_for_capture=True: never raise; get_frame() returns None until
+    running.
+
+    wait_for_capture=True: never raise, get_frame() returns None until
     the game (and DLL) come up, then connects automatically.
     """
 
@@ -194,7 +186,7 @@ class FrameReader:
         return self._ctl_addr != 0
 
     def get_frame(self, timeout_ms: int = 1000, copy: bool = True) -> Optional[Frame]:
-        """Block until a frame NEWER than the last one returned exists.
+        """Block until a frame newer than the last one returned exists.
 
         Returns None on timeout. copy=False returns a zero-copy view into
         shared memory (check frame.is_valid() after using it).
