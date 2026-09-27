@@ -81,7 +81,7 @@ public:
     FrameReader(const FrameReader&) = delete;
     FrameReader& operator=(const FrameReader&) = delete;
 
-    bool ok() const {
+    bool connected() const {
         return ctl_ != nullptr;
     }
     const std::string& last_error() const {
@@ -149,6 +149,10 @@ public:
         if (ctl_->magic != kControlMagic) {
             disconnect();
             return fail("capture DLL not ready");
+        }
+        if (ctl_->version != kProtocolVersion) {
+            disconnect();
+            return fail("capture DLL protocol version mismatch");
         }
         for (int i = 0; i < 2; ++i) {
             events_[i] = OpenEventW(SYNCHRONIZE, FALSE, kEventNames[i]);
@@ -250,7 +254,10 @@ private:
         }
         m->hdr = static_cast<const DataHeader*>(m->base);
         std::atomic_thread_fence(std::memory_order_acquire);
-        if (m->hdr->magic != kDataMagic || m->hdr->generation != generation || m->hdr->slot_count == 0) {
+        if (m->hdr->magic != kDataMagic ||
+            m->hdr->generation != generation ||
+            m->hdr->slot_count == 0 ||
+            m->hdr->version != kProtocolVersion) {
             return fail("data mapping header invalid");
         }
         map_ = std::move(m);

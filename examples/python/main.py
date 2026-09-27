@@ -1,7 +1,7 @@
 from ets2la_capture import FrameReader
 import cv2
 
-reader = FrameReader(wait_for_capture=True)
+reader = FrameReader()
 
 while True:
     frame = reader.get_frame()

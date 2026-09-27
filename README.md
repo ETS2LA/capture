@@ -24,7 +24,7 @@ Python client: `pip install ./python` (see `python/README.md`).
 ```python
 from ets2la_capture import FrameReader
 
-reader = FrameReader(wait_for_capture=True)
+reader = FrameReader()
 frame = reader.get_frame()
 bgr = frame.to_bgr()
 ```

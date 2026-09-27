@@ -18,8 +18,13 @@ SLOT_HEADER_BYTES = 256
 MAX_READERS = 32
 READER_TIMEOUT_MS = 10000
 
+# Bump whenever ControlBlock/DataHeader layout or semantics change in any way.
+PROTOCOL_VERSION = 1
+
 CTL_MAGIC = 0
-CTL_SLOT_COUNT = 4
+CTL_VERSION = 4
+CTL_SLOT_COUNT = 8
+CTL_MAX_READERS = 12
 CTL_QPC_FREQ = 16
 CTL_WRITER_PID = 24
 CTL_GENERATION = 64
@@ -31,8 +36,8 @@ CTL_LAST_PUBLISH_QPC = 96
 CTL_READERS = 128
 READER_STRIDE = 64
 
-# DataHeader: magic, generation, slot_count, slot_stride, slots_offset, width, height, stride, format, bytes_per_pixel, pad, total_size
-DATA_HEADER_FMT = "<III4xQQIIIIIIQ"
+# DataHeader: magic, version, generation, slot_count, slot_stride, slots_offset, width, height, stride, format, bytes_per_pixel, pad, total_size
+DATA_HEADER_FMT = "<IIIIQQIIIIIIQ"
 
 # SlotHeader: seq, frame_index, timestamp_qpc, publish_qpc
 SLOT_FMT = "<QQQQ"
@@ -103,10 +108,10 @@ class _DataMapping:
         self.addr = addr
         self.generation = generation
         head = (ctypes.c_ubyte * 4096).from_address(addr)
-        (magic, gen, self.slot_count, self.slot_stride, self.slots_offset,
+        (magic, version, gen, self.slot_count, self.slot_stride, self.slots_offset,
          self.width, self.height, self.stride, self.format, self.bytes_per_pixel,
          _pad, self.total_size) = struct.unpack_from(DATA_HEADER_FMT, head, 0)
-        if magic != DATA_MAGIC or gen != generation or self.slot_count == 0:
+        if magic != DATA_MAGIC or version != PROTOCOL_VERSION or gen != generation or self.slot_count == 0:
             raise OSError("data mapping header invalid")
         self.buf = (ctypes.c_ubyte * self.total_size).from_address(addr)
         self.buf._guard = self.guard
@@ -156,17 +161,14 @@ class Frame:
 class FrameReader:
     """Lock-free reader.
 
-    wait_for_capture=False (default): raise OSError if the capture DLL is not
-    running.
-
-    wait_for_capture=True: never raise, get_frame() returns None until
-    the game (and DLL) come up, then connects automatically.
+    The constructor tries to connect once, and if that fails, `connected` stays
+    False and get_frame() / get_latest_frame() silently keep retrying the
+    connection in the background until the capture DLL shows up.
     """
 
-    def __init__(self, wait_for_capture: bool = False):
+    def __init__(self):
         if kernel32 is None:
             raise OSError("ets2la_capture only works on Windows")
-        self._wait_for_capture = wait_for_capture
         self._qpc = ctypes.c_int64()
         self._ctl_handle = None
         self._ctl_addr = 0
@@ -178,10 +180,8 @@ class FrameReader:
         self._freq = 0
         self._last_reconnect = 0.0
         self.last_error = ""
-        if not self._connect() and not wait_for_capture:
-            raise OSError(self.last_error)
+        self._connect()
 
-    @property
     def connected(self) -> bool:
         return self._ctl_addr != 0
 
@@ -262,6 +262,11 @@ class FrameReader:
             kernel32.UnmapViewOfFile(addr)
             kernel32.CloseHandle(h)
             return self._fail("capture DLL not ready")
+        version = ctypes.c_uint32.from_address(addr + CTL_VERSION).value
+        if version != PROTOCOL_VERSION:
+            kernel32.UnmapViewOfFile(addr)
+            kernel32.CloseHandle(h)
+            return self._fail("capture DLL protocol version mismatch")
         events = [kernel32.OpenEventW(SYNCHRONIZE, False, n) for n in EVENT_NAMES]
         if not all(events):
             for e in events:

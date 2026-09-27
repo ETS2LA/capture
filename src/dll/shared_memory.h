@@ -107,6 +107,7 @@ public:
         if (!existed || ctl_->magic != kControlMagic) {
             std::memset(ctl_, 0, sizeof(ControlBlock));
         }
+        ctl_->version = kProtocolVersion;
         ctl_->slot_count = kSlotCount;
         ctl_->max_readers = kMaxReaders;
         ctl_->qpc_frequency = uint64_t(freq.QuadPart);
@@ -295,6 +296,7 @@ private:
         }
 
         auto* hdr = reinterpret_cast<DataHeader*>(base);
+        hdr->version = kProtocolVersion;
         hdr->generation = gen;
         hdr->slot_count = kSlotCount;
         hdr->slot_stride = stride;

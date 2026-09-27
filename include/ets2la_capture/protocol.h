@@ -10,6 +10,9 @@ namespace ets2la_capture {
 constexpr uint32_t kControlMagic = 0x32435445;  // "ETC2"
 constexpr uint32_t kDataMagic = 0x32445445;     // "ETD2"
 
+// Bump whenever ControlBlock/DataHeader layout or semantics change in any way.
+constexpr uint32_t kProtocolVersion = 1;
+
 constexpr uint32_t kSlotCount = 6;              // frames kept in the ring
 constexpr uint32_t kMaxReaders = 32;            // heartbeat table size
 constexpr uint32_t kReaderTimeoutMs = 10000;    // reader considered gone after this
@@ -35,15 +38,16 @@ struct ReaderEntry {                        // 64 bytes, one cache line per read
 };
 
 struct ControlBlock {
-    // --- cache line 0: written once by the writer ---
+    // cache line 0: written once by the writer
     uint32_t magic;                         //   0
-    uint32_t slot_count;                    //   4
-    uint32_t max_readers;                   //   8
+    uint32_t version;                       //   4
+    uint32_t slot_count;                    //   8
+    uint32_t max_readers;                   //  12
     uint64_t qpc_frequency;                 //  16
     uint32_t writer_pid;                    //  24
     uint32_t pad0;                          //  28
     uint8_t pad1[32];                       //  32
-    // --- cache line 1..: hot, updated per frame by the writer ---
+    // cache line 1..: updated per frame by the writer
     std::atomic<uint32_t> generation;       //  64  data mapping currently in use
     std::atomic<uint32_t> capturing;        //  68  1 while the DLL is actively capturing
     std::atomic<uint64_t> latest_frame;     //  72  index of newest complete frame, 0 = none
@@ -56,8 +60,9 @@ struct ControlBlock {
 
 struct DataHeader {                         // lives in the first 4096 bytes
     uint32_t magic;                         //  0
-    uint32_t generation;                    //  4
-    uint32_t slot_count;                    //  8
+    uint32_t version;                       //  4
+    uint32_t generation;                    //  8
+    uint32_t slot_count;                    // 12
     uint64_t slot_stride;                   // 16  bytes from one slot to the next
     uint64_t slots_offset;                  // 24  == kDataHeaderBytes
     uint32_t width;                         // 32
@@ -81,6 +86,10 @@ static_assert(std::atomic<uint64_t>::is_always_lock_free, "need lock-free 64-bit
 static_assert(std::atomic<uint32_t>::is_always_lock_free, "need lock-free 32-bit atomics");
 static_assert(sizeof(ReaderEntry) == 64, "ReaderEntry layout");
 static_assert(sizeof(SlotHeader) == 64, "SlotHeader layout");
+static_assert(offsetof(ControlBlock, version) == 4, "ControlBlock layout");
+static_assert(offsetof(ControlBlock, slot_count) == 8, "ControlBlock layout");
+static_assert(offsetof(ControlBlock, max_readers) == 12, "ControlBlock layout");
+static_assert(offsetof(ControlBlock, qpc_frequency) == 16, "ControlBlock layout");
 static_assert(offsetof(ControlBlock, generation) == 64, "ControlBlock layout");
 static_assert(offsetof(ControlBlock, latest_frame) == 72, "ControlBlock layout");
 static_assert(offsetof(ControlBlock, frames_published) == 80, "ControlBlock layout");
@@ -88,6 +97,9 @@ static_assert(offsetof(ControlBlock, frames_dropped) == 88, "ControlBlock layout
 static_assert(offsetof(ControlBlock, last_publish_qpc) == 96, "ControlBlock layout");
 static_assert(offsetof(ControlBlock, readers) == 128, "ControlBlock layout");
 static_assert(sizeof(ControlBlock) <= kControlBytes, "ControlBlock too large");
+static_assert(offsetof(DataHeader, version) == 4, "DataHeader layout");
+static_assert(offsetof(DataHeader, generation) == 8, "DataHeader layout");
+static_assert(offsetof(DataHeader, slot_count) == 12, "DataHeader layout");
 static_assert(offsetof(DataHeader, slot_stride) == 16, "DataHeader layout");
 static_assert(offsetof(DataHeader, width) == 32, "DataHeader layout");
 static_assert(offsetof(DataHeader, total_size) == 56, "DataHeader layout");

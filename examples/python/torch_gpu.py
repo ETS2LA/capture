@@ -1,7 +1,7 @@
 from ets2la_capture import FrameReader
 import torch
 
-reader = FrameReader(wait_for_capture=True)
+reader = FrameReader()
 
 while True:
     frame = reader.get_frame(timeout_ms=1000, copy=False)  # no copy on the CPU
