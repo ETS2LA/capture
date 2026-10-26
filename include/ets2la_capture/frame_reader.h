@@ -140,7 +140,7 @@ public:
         disconnect();
         ctlMap_ = OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, FALSE, kControlName);
         if (!ctlMap_) {
-            return fail("capture not running (OpenFileMapping failed). Is ets2la_capture.dll loaded?");
+            return false;
         }
         ctl_ = static_cast<ControlBlock*>(MapViewOfFile(ctlMap_, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, kControlBytes));
         if (!ctl_) {

@@ -252,7 +252,7 @@ class FrameReader:
         self.close()
         h = kernel32.OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, False, CONTROL_NAME)
         if not h:
-            return self._fail("capture not running (OpenFileMapping failed). Is ets2la_capture.dll loaded?")
+            return False
         addr = kernel32.MapViewOfFile(h, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, CONTROL_BYTES)
         if not addr:
             kernel32.CloseHandle(h)
