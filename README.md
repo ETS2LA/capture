@@ -13,7 +13,7 @@ by default it is expected next to this repo as `../telemetry`, otherwise pass `-
 at configure time.
 
 ```powershell
-cmake -B build -A x64 -DETS2LA_TELEMETRY_DIR=../telemetry
+cmake -B build -A x64 -DETS2LA_TELEMETRY_DIR="../telemetry"
 cmake --build build --config Release
 ```
 

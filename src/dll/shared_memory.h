@@ -123,7 +123,7 @@ public:
         } else {
             ResetEvent(events_[latest & 1]);
         }
-    
+
         nextGeneration_ = ctl_->generation.load(std::memory_order_relaxed) + 1;
         return true;
     }
@@ -227,7 +227,7 @@ public:
         for (auto& e : events_) {
             if (e) {
                 CloseHandle(e);
-                e = nullptr; 
+                e = nullptr;
             }
         }
     }
