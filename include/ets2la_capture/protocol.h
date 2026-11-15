@@ -11,7 +11,7 @@ constexpr uint32_t kControlMagic = 0x32435445;  // "ETC2"
 constexpr uint32_t kDataMagic = 0x32445445;     // "ETD2"
 
 // Bump whenever ControlBlock/DataHeader layout or semantics change in any way.
-constexpr uint32_t kProtocolVersion = 1;
+constexpr uint32_t kProtocolVersion = 2;
 
 constexpr uint32_t kSlotCount = 6;              // frames kept in the ring
 constexpr uint32_t kMaxReaders = 32;            // heartbeat table size
@@ -20,6 +20,13 @@ constexpr uint32_t kReaderTimeoutMs = 10000;    // reader considered gone after 
 constexpr uint64_t kControlBytes = 4096;
 constexpr uint64_t kDataHeaderBytes = 4096;
 constexpr uint64_t kSlotHeaderBytes = 256;      // pixels start this far into a slot
+constexpr uint64_t kTelemetryAlignBytes = 64;   // the telemetry snapshot of a slot is aligned to this
+
+constexpr uint32_t kSyncFlagTelemetryValid = 1u << 0;     // the slot holds a telemetry snapshot of the same game frame
+constexpr uint32_t kSyncFlagTelemetryRepeated = 1u << 1;  // same snapshot as the previous delivered frame
+constexpr uint32_t kSyncFlagTelemetrySkipped = 1u << 2;   // snapshots were skipped since the previous delivered frame
+constexpr uint32_t kSyncFlagTelemetryStale = 1u << 3;     // the newest snapshot was older than kTelemetryStaleMs
+constexpr uint32_t kTelemetryStaleMs = 1000;
 
 inline constexpr const wchar_t* kControlName = L"Local\\ETS2LA_Capture_Control";
 inline constexpr const wchar_t* kEventNames[2] = {
@@ -54,7 +61,8 @@ struct ControlBlock {
     std::atomic<uint64_t> frames_published; //  80
     std::atomic<uint64_t> frames_dropped;   //  88  frames the capture side had to skip
     std::atomic<uint64_t> last_publish_qpc; //  96
-    uint8_t pad2[24];                       // 104
+    std::atomic<uint64_t> frames_synced;    // 104  frames published together with a telemetry snapshot
+    uint8_t pad2[16];                       // 112
     ReaderEntry readers[kMaxReaders];       // 128
 };
 
@@ -72,6 +80,8 @@ struct DataHeader {                         // lives in the first 4096 bytes
     uint32_t bytes_per_pixel;               // 48
     uint32_t pad0;                          // 52
     uint64_t total_size;                    // 56
+    uint32_t telemetry_offset;              // 64
+    uint32_t telemetry_size;                // 68
 };
 
 struct SlotHeader {                         // 64 bytes, pixels follow at +kSlotHeaderBytes
@@ -79,7 +89,11 @@ struct SlotHeader {                         // 64 bytes, pixels follow at +kSlot
     uint64_t frame_index;                   //  8
     uint64_t timestamp_qpc;                 // 16  QPC when the game called Present()
     uint64_t publish_qpc;                   // 24  QPC when the frame became readable
-    uint8_t pad[32];
+    uint64_t telemetry_frame_index;         // 32
+    uint64_t telemetry_timestamp_qpc;       // 40  QPC when the game started the frame of that snapshot
+    uint32_t sync_flags;                    // 48
+    uint32_t pad0;                          // 52
+    uint64_t telemetry_publish_qpc;         // 56  QPC when the telemetry plugin published that snapshot
 };
 
 static_assert(std::atomic<uint64_t>::is_always_lock_free, "need lock-free 64-bit atomics");
@@ -95,6 +109,7 @@ static_assert(offsetof(ControlBlock, latest_frame) == 72, "ControlBlock layout")
 static_assert(offsetof(ControlBlock, frames_published) == 80, "ControlBlock layout");
 static_assert(offsetof(ControlBlock, frames_dropped) == 88, "ControlBlock layout");
 static_assert(offsetof(ControlBlock, last_publish_qpc) == 96, "ControlBlock layout");
+static_assert(offsetof(ControlBlock, frames_synced) == 104, "ControlBlock layout");
 static_assert(offsetof(ControlBlock, readers) == 128, "ControlBlock layout");
 static_assert(sizeof(ControlBlock) <= kControlBytes, "ControlBlock too large");
 static_assert(offsetof(DataHeader, version) == 4, "DataHeader layout");
@@ -103,11 +118,20 @@ static_assert(offsetof(DataHeader, slot_count) == 12, "DataHeader layout");
 static_assert(offsetof(DataHeader, slot_stride) == 16, "DataHeader layout");
 static_assert(offsetof(DataHeader, width) == 32, "DataHeader layout");
 static_assert(offsetof(DataHeader, total_size) == 56, "DataHeader layout");
+static_assert(offsetof(DataHeader, telemetry_offset) == 64, "DataHeader layout");
+static_assert(offsetof(DataHeader, telemetry_size) == 68, "DataHeader layout");
+static_assert(offsetof(SlotHeader, telemetry_frame_index) == 32, "SlotHeader layout");
+static_assert(offsetof(SlotHeader, telemetry_timestamp_qpc) == 40, "SlotHeader layout");
+static_assert(offsetof(SlotHeader, sync_flags) == 48, "SlotHeader layout");
+static_assert(offsetof(SlotHeader, telemetry_publish_qpc) == 56, "SlotHeader layout");
 static_assert(sizeof(DataHeader) <= kDataHeaderBytes, "DataHeader too large");
 
 inline constexpr uint64_t align_up(uint64_t v, uint64_t a) { return (v + a - 1) / a * a; }
-inline constexpr uint64_t slot_stride_for(uint64_t payload_bytes) {
-    return align_up(kSlotHeaderBytes + payload_bytes, 4096);
+inline constexpr uint64_t telemetry_offset_for(uint64_t payload_bytes) {
+    return align_up(kSlotHeaderBytes + payload_bytes, kTelemetryAlignBytes);
+}
+inline constexpr uint64_t slot_stride_for(uint64_t payload_bytes, uint64_t telemetry_bytes) {
+    return align_up(telemetry_offset_for(payload_bytes) + telemetry_bytes, 4096);
 }
 
 enum class PixelLayout : uint32_t { Unknown = 0, BGRA8, BGRX8, RGBA8, RGB10A2, RGBA16F };

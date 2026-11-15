@@ -19,7 +19,7 @@ MAX_READERS = 32
 READER_TIMEOUT_MS = 10000
 
 # Bump whenever ControlBlock/DataHeader layout or semantics change in any way.
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 CTL_MAGIC = 0
 CTL_VERSION = 4
@@ -33,14 +33,21 @@ CTL_LATEST = 72
 CTL_PUBLISHED = 80
 CTL_DROPPED = 88
 CTL_LAST_PUBLISH_QPC = 96
+CTL_SYNCED = 104
 CTL_READERS = 128
 READER_STRIDE = 64
 
-# DataHeader: magic, version, generation, slot_count, slot_stride, slots_offset, width, height, stride, format, bytes_per_pixel, pad, total_size
-DATA_HEADER_FMT = "<IIIIQQIIIIIIQ"
+# DataHeader: magic, version, generation, slot_count, slot_stride, slots_offset, width, height, stride, format, bytes_per_pixel, pad, total_size, telemetry_offset, telemetry_size
+DATA_HEADER_FMT = "<IIIIQQIIIIIIQII"
 
-# SlotHeader: seq, frame_index, timestamp_qpc, publish_qpc
-SLOT_FMT = "<QQQQ"
+# SlotHeader: seq, frame_index, timestamp_qpc, publish_qpc, telemetry_frame_index, telemetry_timestamp_qpc, sync_flags, pad, telemetry_publish_qpc
+SLOT_FMT = "<QQQQQQIIQ"
+
+# sync_flags
+SYNC_TELEMETRY_VALID = 1 << 0     # the slot holds a telemetry snapshot of the same game frame
+SYNC_TELEMETRY_REPEATED = 1 << 1  # same snapshot as the previous delivered frame
+SYNC_TELEMETRY_SKIPPED = 1 << 2   # snapshots were skipped since the previous delivered frame
+SYNC_TELEMETRY_STALE = 1 << 3     # the newest snapshot was older than one second
 
 SYNCHRONIZE = 0x00100000
 FILE_MAP_WRITE = 0x0002
@@ -110,7 +117,7 @@ class _DataMapping:
         head = (ctypes.c_ubyte * 4096).from_address(addr)
         (magic, version, gen, self.slot_count, self.slot_stride, self.slots_offset,
          self.width, self.height, self.stride, self.format, self.bytes_per_pixel,
-         _pad, self.total_size) = struct.unpack_from(DATA_HEADER_FMT, head, 0)
+         _pad, self.total_size, self.telemetry_offset, self.telemetry_size) = struct.unpack_from(DATA_HEADER_FMT, head, 0)
         if magic != DATA_MAGIC or version != PROTOCOL_VERSION or gen != generation or self.slot_count == 0:
             raise OSError("data mapping header invalid")
         self.buf = (ctypes.c_ubyte * self.total_size).from_address(addr)
@@ -121,7 +128,11 @@ class _DataMapping:
 class Frame:
     """One captured frame."""
 
-    __slots__ = ("pixels", "width", "height", "format", "layout", "frame_index", "timestamp_qpc", "publish_qpc", "_check", "_reader")
+    __slots__ = (
+        "pixels", "width", "height", "format", "layout", "frame_index", "timestamp_qpc", "publish_qpc",
+        "sync_flags", "telemetry_frame_index", "telemetry_timestamp_qpc", "telemetry_publish_qpc",
+        "_check", "_reader", "_telemetry",
+    )
 
     def is_valid(self) -> bool:
         """Always True for copies. For copy=False frames: False if the writer overwrote the frame while you were reading it (discard the result)."""
@@ -206,6 +217,7 @@ class FrameReader:
             "latest_frame": u64(CTL_LATEST),
             "frames_published": u64(CTL_PUBLISHED),
             "frames_dropped_by_capture": u64(CTL_DROPPED),
+            "frames_synced": u64(CTL_SYNCED),
             "generation": u32(CTL_GENERATION),
             "capturing": bool(u32(CTL_CAPTURING)),
             "writer_pid": u32(CTL_WRITER_PID),
@@ -346,10 +358,10 @@ class FrameReader:
             if m is None:
                 return None
             slot_off = m.slots_offset + (latest % m.slot_count) * m.slot_stride
-            s1, idx, ts, pub = struct.unpack_from(SLOT_FMT, m.buf, slot_off)
+            s1, idx, ts, pub, tel_idx, tel_ts, flags, _pad, tel_pub = struct.unpack_from(SLOT_FMT, m.buf, slot_off)
             if (s1 & 1) or idx != latest:
                 continue
-            return m, slot_off, s1, idx, ts, pub
+            return m, slot_off, s1, idx, ts, pub, (flags, tel_idx, tel_ts, tel_pub)
         return None
 
     def _wait_newer(self, deadline: float) -> bool:
@@ -363,7 +375,7 @@ class FrameReader:
             kernel32.WaitForSingleObject(ev, max(1, min(5, int(remaining * 1000 + 0.999))))
             self._heartbeat()
 
-    def _make_frame(self, m, slot_off, s1, idx, ts, pub, copy):
+    def _make_frame(self, m, slot_off, s1, idx, ts, pub, sync, copy):
         off = slot_off + SLOT_HEADER_BYTES
         h, w = m.height, m.width
         if m.layout == "RGB10A2":
@@ -387,8 +399,10 @@ class FrameReader:
         f.pixels = pix
         f.width, f.height, f.format, f.layout = w, h, m.format, m.layout
         f.frame_index, f.timestamp_qpc, f.publish_qpc = idx, ts, pub
+        f.sync_flags, f.telemetry_frame_index, f.telemetry_timestamp_qpc, f.telemetry_publish_qpc = sync
         f._check = None if copy else still_valid
         f._reader = self
+        f._telemetry = None
         return f
 
     def _acquire(self, only_new: bool, timeout_ms: int, copy: bool) -> Optional[Frame]:

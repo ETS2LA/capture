@@ -9,6 +9,7 @@
 #include <string>
 
 #include "../../include/ets2la_capture/protocol.h"
+#include "telemetry_source.h"
 
 namespace ets2la_capture {
 
@@ -132,7 +133,7 @@ public:
         return ensure_geometry_locked(width, height, dxgiFormat, bytesPerPixel);
     }
 
-    bool publish(const uint8_t* src, uint32_t srcPitch, uint64_t timestampQpc) {
+    bool publish(const uint8_t* src, uint32_t srcPitch, uint64_t timestampQpc, const TelemetrySnapshot& telemetry) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!ctl_ || !data_) {
             return false;
@@ -149,6 +150,13 @@ public:
 
         slot->frame_index = index;
         slot->timestamp_qpc = timestampQpc;
+        slot->telemetry_frame_index = telemetry.frame_index;
+        slot->telemetry_timestamp_qpc = telemetry.timestamp_qpc;
+        slot->telemetry_publish_qpc = telemetry.publish_qpc;
+        slot->sync_flags = telemetry.flags;
+        if (telemetry.flags & kSyncFlagTelemetryValid) {
+            std::memcpy(slotBase + telemetryOffset_, &telemetry.data, sizeof(ets2la_telemetry::TelemetryData));
+        }
         if (srcPitch == rowBytes_) {
             std::memcpy(dst, src, size_t(rowBytes_) * height_);
         } else {
@@ -170,6 +178,9 @@ public:
         ctl_->latest_frame.store(index, std::memory_order_release);
         ctl_->last_publish_qpc.store(uint64_t(now.QuadPart), std::memory_order_relaxed);
         ctl_->frames_published.fetch_add(1, std::memory_order_relaxed);
+        if (telemetry.flags & kSyncFlagTelemetryValid) {
+            ctl_->frames_synced.fetch_add(1, std::memory_order_relaxed);
+        }
         SetEvent(events_[index & 1]);
         return true;
     }
@@ -268,7 +279,8 @@ private:
 
         const uint64_t rowBytes = uint64_t(w) * bpp;
         const uint64_t payload = rowBytes * h;
-        const uint64_t stride = slot_stride_for(payload);
+        const uint64_t telemetryOffset = telemetry_offset_for(payload);
+        const uint64_t stride = slot_stride_for(payload, sizeof(ets2la_telemetry::TelemetryData));
         const uint64_t total = kDataHeaderBytes + stride * kSlotCount;
 
         uint32_t gen = nextGeneration_;
@@ -307,6 +319,8 @@ private:
         hdr->format = fmt;
         hdr->bytes_per_pixel = bpp;
         hdr->total_size = total;
+        hdr->telemetry_offset = uint32_t(telemetryOffset);
+        hdr->telemetry_size = uint32_t(sizeof(ets2la_telemetry::TelemetryData));
         std::atomic_thread_fence(std::memory_order_release);
         hdr->magic = kDataMagic;
 
@@ -316,6 +330,7 @@ private:
         width_ = w; height_ = h; format_ = fmt; bpp_ = bpp;
         rowBytes_ = uint32_t(rowBytes);
         slotStride_ = stride;
+        telemetryOffset_ = telemetryOffset;
         generation_ = gen;
         nextGeneration_ = gen + 1;
         generationDirty_ = true;
@@ -334,6 +349,7 @@ private:
     uint8_t* data_ = nullptr;
     uint32_t width_ = 0, height_ = 0, format_ = 0, bpp_ = 0, rowBytes_ = 0;
     uint64_t slotStride_ = 0;
+    uint64_t telemetryOffset_ = 0;
     uint32_t generation_ = 0, nextGeneration_ = 1;
     bool generationDirty_ = false;
 };

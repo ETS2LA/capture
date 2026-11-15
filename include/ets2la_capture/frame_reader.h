@@ -28,6 +28,10 @@ struct FrameInfo {
     uint64_t frame_index = 0;
     uint64_t timestamp_qpc = 0;
     uint64_t publish_qpc = 0;
+    uint32_t sync_flags = 0;
+    uint64_t telemetry_frame_index = 0;
+    uint64_t telemetry_timestamp_qpc = 0;
+    uint64_t telemetry_publish_qpc = 0;
 
     PixelLayout layout() const { return pixel_layout(format); }
     size_t size_bytes() const { return size_t(stride) * height; }
@@ -44,6 +48,8 @@ struct Frame : FrameInfo {
 class FrameView : public FrameInfo {
 public:
     const uint8_t* data = nullptr;
+    const uint8_t* telemetry_data = nullptr;
+    uint32_t telemetry_size = 0;
     bool valid() const {
         if (!slot_) return false;
         std::atomic_thread_fence(std::memory_order_acquire);
@@ -65,6 +71,7 @@ struct CaptureStats {
     uint64_t latest_frame = 0;
     uint64_t frames_published = 0;
     uint64_t frames_dropped_by_capture = 0;
+    uint64_t frames_synced = 0;
     uint32_t generation = 0;
     bool capturing = false;
     uint32_t writer_pid = 0;
@@ -130,6 +137,7 @@ public:
         s.latest_frame = ctl_->latest_frame.load(std::memory_order_relaxed);
         s.frames_published = ctl_->frames_published.load(std::memory_order_relaxed);
         s.frames_dropped_by_capture = ctl_->frames_dropped.load(std::memory_order_relaxed);
+        s.frames_synced = ctl_->frames_synced.load(std::memory_order_relaxed);
         s.generation = ctl_->generation.load(std::memory_order_relaxed);
         s.capturing = ctl_->capturing.load(std::memory_order_relaxed) != 0;
         s.writer_pid = ctl_->writer_pid;
@@ -295,7 +303,13 @@ private:
             out.frame_index = latest;
             out.timestamp_qpc = slot->timestamp_qpc;
             out.publish_qpc = slot->publish_qpc;
+            out.sync_flags = slot->sync_flags;
+            out.telemetry_frame_index = slot->telemetry_frame_index;
+            out.telemetry_timestamp_qpc = slot->telemetry_timestamp_qpc;
+            out.telemetry_publish_qpc = slot->telemetry_publish_qpc;
             out.data = slotBase + kSlotHeaderBytes;
+            out.telemetry_data = h->telemetry_size ? slotBase + h->telemetry_offset : nullptr;
+            out.telemetry_size = h->telemetry_size;
             out.slot_ = slot;
             out.seq_ = s1;
             out.keepalive_ = map_;

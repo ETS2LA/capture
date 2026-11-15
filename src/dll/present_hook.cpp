@@ -17,6 +17,7 @@
 #include "present_hook.h"
 #include "scs_logging.h"
 #include "shared_memory.h"
+#include "telemetry_source.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -42,6 +43,7 @@ static std::atomic<bool> g_hookInstalled{false};
 static std::atomic<bool> g_stopping{false};
 static std::atomic<int> g_inHook{0};
 static std::atomic<bool> g_useShared{true};
+static TelemetrySource g_telemetrySource;
 
 static uint64_t Qpc() {
     LARGE_INTEGER q;
@@ -63,6 +65,7 @@ struct SharedTex {
     HANDLE handle = nullptr;
     ComPtr<ID3D11Texture2D> workerTex;
     ComPtr<IDXGIKeyedMutex> workerKm;
+    TelemetrySnapshot telemetry;
 };
 
 struct PipelineC {
@@ -94,6 +97,7 @@ static HANDLE g_workerThread = nullptr;
 static ComPtr<ID3D11Device> g_wdev;
 static ComPtr<ID3D11DeviceContext> g_wctx;
 static LUID g_wluid = {};
+static TelemetrySnapshot g_workerTelemetry;
 
 static std::shared_ptr<PipelineC> CreatePipelineC(ID3D11Device* dev, UINT w, UINT h, DXGI_FORMAT fmt, uint32_t bpp) {
     auto p = std::make_shared<PipelineC>();
@@ -229,6 +233,7 @@ static void ProcessJob(const Job& job) {
     }
 
     g_wctx->CopyResource(p.staging.Get(), t.workerTex.Get());
+    g_workerTelemetry = t.telemetry;
     t.workerKm->ReleaseSync(0);
 
     D3D11_MAPPED_SUBRESOURCE m = {};
@@ -238,7 +243,7 @@ static void ProcessJob(const Job& job) {
         return;
     }
     if (g_writer.ensure_geometry(p.width, p.height, uint32_t(p.format), p.bpp)) {
-        g_writer.publish(static_cast<const uint8_t*>(m.pData), m.RowPitch, job.qpc);
+        g_writer.publish(static_cast<const uint8_t*>(m.pData), m.RowPitch, job.qpc, g_workerTelemetry);
     }
     g_wctx->Unmap(p.staging.Get(), 0);
 }
@@ -297,6 +302,7 @@ static void CaptureShared(
         SharedTex& t = p.tex[idx];
         if (t.gameKm->AcquireSync(0, 0) != S_OK) continue;
         ctx->CopyResource(t.gameTex.Get(), bb);
+        g_telemetrySource.capture(t.telemetry, presentQpc);
         t.gameKm->ReleaseSync(1);
         p.next = (idx + 1) % kRing;
         {
@@ -319,6 +325,7 @@ struct PipelineB {
     ComPtr<ID3D11Texture2D> staging[kStageCount];
     bool valid[kStageCount] = {};
     uint64_t qpc[kStageCount] = {};
+    TelemetrySnapshot telemetry[kStageCount];
     int writeIdx = 0;
 };
 static std::unique_ptr<PipelineB> g_pipeB;
@@ -362,7 +369,7 @@ static void CaptureStaging(
         HRESULT hr = ctx->Map(p.staging[idx].Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &m);
         if (hr == S_OK) {
             if (g_writer.ensure_geometry(p.width, p.height, uint32_t(p.format), p.bpp))
-                g_writer.publish(static_cast<const uint8_t*>(m.pData), m.RowPitch, p.qpc[idx]);
+                g_writer.publish(static_cast<const uint8_t*>(m.pData), m.RowPitch, p.qpc[idx], p.telemetry[idx]);
             ctx->Unmap(p.staging[idx].Get(), 0);
             for (int j = 0; j < kStageCount; ++j) p.valid[j] = false;
             break;
@@ -373,6 +380,7 @@ static void CaptureStaging(
     ctx->CopyResource(p.staging[p.writeIdx].Get(), bb);
     p.valid[p.writeIdx] = true;
     p.qpc[p.writeIdx] = presentQpc;
+    g_telemetrySource.capture(p.telemetry[p.writeIdx], presentQpc);
     p.writeIdx = (p.writeIdx + 1) % kStageCount;
 }
 
