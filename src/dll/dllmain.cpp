@@ -1,6 +1,11 @@
 #include <windows.h>
 #include "present_hook.h"
 #include "scs_logging.h"
+#include "../../include/ets2la_capture/protocol.h"
+
+#ifndef ETS2LA_CAPTURE_VERSION
+#define ETS2LA_CAPTURE_VERSION "unknown"
+#endif
 
 namespace scs_logging {
 
@@ -47,6 +52,10 @@ extern "C" __declspec(dllexport) scs_result_t SCSAPIFUNC scs_telemetry_init(
 
     const auto* versionedParams = static_cast<const scs_telemetry_init_params_v100_t*>(params);
     scs_logging::initialize(versionedParams->common.log);
+    scs_logging::writef(
+        SCS_LOG_TYPE_message, "ets2la_capture v%s, NORMAL build (protocol %u)",
+        ETS2LA_CAPTURE_VERSION, unsigned(ets2la_capture::kProtocolVersion)
+    );
 
     CreateThread(nullptr, 0, [](LPVOID) -> DWORD {
         StartPresentHook();

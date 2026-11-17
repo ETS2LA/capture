@@ -161,7 +161,7 @@ class Frame:
 class FrameReader:
     """Lock-free reader.
 
-    The constructor tries to connect once, and if that fails, `connected` stays
+    The constructor tries to connect once, and if that fails, `connected()` stays
     False and get_frame() / get_latest_frame() silently keep retrying the
     connection in the background until the capture DLL shows up.
     """
@@ -179,6 +179,8 @@ class FrameReader:
         self._last_index = 0
         self._freq = 0
         self._last_reconnect = 0.0
+        self._c_latest = None
+        self._c_gen = None
         self.last_error = ""
         self._connect()
 
@@ -198,7 +200,7 @@ class FrameReader:
         return self._acquire(False, 0, copy)
 
     def stats(self) -> dict:
-        if not self.connected:
+        if not self.connected():
             return {}
         u64 = lambda off: ctypes.c_uint64.from_address(self._ctl_addr + off).value
         u32 = lambda off: ctypes.c_uint32.from_address(self._ctl_addr + off).value
@@ -221,6 +223,8 @@ class FrameReader:
     def close(self):
         self._unregister()
         self._map = None
+        self._c_latest = None
+        self._c_gen = None
         if self._ctl_addr:
             kernel32.UnmapViewOfFile(self._ctl_addr)
             self._ctl_addr = 0
@@ -392,12 +396,12 @@ class FrameReader:
         return f
 
     def _acquire(self, only_new: bool, timeout_ms: int, copy: bool) -> Optional[Frame]:
-        if not self.connected:
+        if not self.connected():
             now = time.perf_counter()
             if now - self._last_reconnect >= 0.25:
                 self._last_reconnect = now
                 self._connect()
-            if not self.connected:
+            if not self.connected():
                 time.sleep(min(timeout_ms, 50) / 1000.0)
                 return None
         self._heartbeat()
