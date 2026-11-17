@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(ets2la_capture VERSION 1.1.0 LANGUAGES CXX C)
+project(ets2la_capture VERSION 1.1.1 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,6 +22,7 @@ add_library(ets2la_capture SHARED
     src/dll/present_hook.cpp
 )
 
+target_compile_definitions(ets2la_capture PRIVATE "ETS2LA_CAPTURE_VERSION=\"${PROJECT_VERSION}\"")
 target_include_directories(ets2la_capture PRIVATE include "${ETS2LA_TELEMETRY_DIR}/include")
 target_link_libraries(ets2la_capture PRIVATE minhook d3d11 dxgi)
 set_target_properties(ets2la_capture PROPERTIES OUTPUT_NAME "ets2la_capture")
