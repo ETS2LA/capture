@@ -14,6 +14,7 @@
 #include <mutex>
 #include <vector>
 
+#include "hook_sync.h"
 #include "present_hook.h"
 #include "scs_logging.h"
 #include "shared_memory.h"
@@ -540,7 +541,33 @@ static void StopWorker(bool join) {
     }
 }
 
+static void WaitUntilNoThreadInHook() {
+    for (int i = 0; i < 500 && g_inHook.load() > 0; ++i) {
+        Sleep(1);
+    }
+}
+
+static void SuspendPresentHook(void*) {
+    MH_DisableHook(g_presentTarget);
+    WaitUntilNoThreadInHook();
+    MH_RemoveHook(g_presentTarget);
+}
+
+static void ResumePresentHook(void*) {
+    if (g_stopping.load() || !g_presentTarget) return;
+    if (MH_CreateHook(g_presentTarget, reinterpret_cast<void*>(&hkPresent), reinterpret_cast<void**>(&oPresent)) != MH_OK ||
+        MH_EnableHook(g_presentTarget) != MH_OK) {
+        scs_logging::write(SCS_LOG_TYPE_error, "could not reinstall Present hook");
+    }
+}
+
 bool StartPresentHook() {
+    hook_sync::HookLockGuard hookLock;
+    if (!hookLock.owns_lock()) {
+        scs_logging::write(SCS_LOG_TYPE_error, "could not acquire the hook lock");
+        return false;
+    }
+
     if (g_hookInstalled.exchange(true)) {
         return true;
     }
@@ -567,28 +594,51 @@ bool StartPresentHook() {
     if (!g_workerThread) return giveUp("could not start capture worker thread");
 
     g_presentTarget = GetPresentAddressViaDummyDevice();
-    if (!g_presentTarget) return giveUp("could not obtain Present address, giving up");
+    if (!g_presentTarget) return giveUp("could not get Present address");
 
     if (MH_Initialize() != MH_OK) return giveUp("MH_Initialize failed");
     if (MH_CreateHook(g_presentTarget, reinterpret_cast<void*>(&hkPresent), reinterpret_cast<void**>(&oPresent)) != MH_OK)
         return giveUp("MH_CreateHook failed");
     if (MH_EnableHook(g_presentTarget) != MH_OK) return giveUp("MH_EnableHook failed");
 
+    if (!hook_sync::register_hook(g_presentTarget, &SuspendPresentHook, &ResumePresentHook, nullptr)) {
+        scs_logging::write(SCS_LOG_TYPE_warning, "hook registry unavailable, unhook order is not protected");
+    }
+
     scs_logging::write(SCS_LOG_TYPE_message, "Present hook installed");
     return true;
 }
 
 void StopPresentHook(bool process_detach) {
-    if (!g_hookInstalled.exchange(false)) return;
-    g_stopping.store(true);
-    MH_DisableHook(MH_ALL_HOOKS);
-
-    if (process_detach) return;
-
-    for (int i = 0; i < 500 && g_inHook.load() > 0; ++i) {
-        Sleep(1);
+    if (process_detach) {
+        if (!g_hookInstalled.exchange(false)) return;
+        g_stopping.store(true);
+        MH_DisableHook(MH_ALL_HOOKS);
+        return;
     }
-    MH_Uninitialize();
+
+    {
+        hook_sync::HookLockGuard hookLock;
+        const bool locked = hookLock.owns_lock();
+        if (!locked) {
+            scs_logging::write(SCS_LOG_TYPE_warning, "could not acquire the hook lock, unhooking without it");
+        }
+        if (!g_hookInstalled.exchange(false)) return;
+        g_stopping.store(true);
+
+        auto removePresentHook = [] {
+            MH_DisableHook(g_presentTarget);
+            WaitUntilNoThreadInHook();
+            MH_RemoveHook(g_presentTarget);
+        };
+        if (locked) {
+            hook_sync::remove_hook_ordered(g_presentTarget, &SuspendPresentHook, removePresentHook);
+        } else {
+            removePresentHook();
+        }
+        MH_Uninitialize();
+    }
+
     StopWorker(true);
     g_pipeC.reset();
     g_retired.clear();
