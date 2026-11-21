@@ -53,7 +53,7 @@ extern "C" __declspec(dllexport) scs_result_t SCSAPIFUNC scs_telemetry_init(
     const auto* versionedParams = static_cast<const scs_telemetry_init_params_v100_t*>(params);
     scs_logging::initialize(versionedParams->common.log);
     scs_logging::writef(
-        SCS_LOG_TYPE_message, "ets2la_capture v%s, NORMAL build (protocol %u)",
+        SCS_LOG_TYPE_message, "ets2la_capture v%s, NORMAL build, protocol v%u",
         ETS2LA_CAPTURE_VERSION, unsigned(ets2la_capture::kProtocolVersion)
     );
 
