@@ -5,7 +5,7 @@ from .frame_reader import Frame, FrameReader
 if TYPE_CHECKING:
     from .synced_reader import SyncedFrame, SyncedReader
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 __all__ = ["Frame", "FrameReader", "SyncedFrame", "SyncedReader", "__version__"]
 
 
